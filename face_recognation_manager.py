@@ -1,96 +1,96 @@
-import face_recognation
 import os
-import cv2
-import numpy as np
 import pickle
-import csv
-from datetime import datetime
+import cv2
+import mediapipe as mp
 
 
 class FaceRecognitionManager:
-    def __init__(self, data_file="known_faces.pkl"):
+    def __init__(self, database_path="face_database.pickle"):
         """
-        Initialize the FaceRecognitionManager class.
-        :param data_file: Path to the file where known faces and IDs are stored.
+        Initializes the FaceRecognitionManager with a database file to store encodings and IDs.
+        :param database_path: Path to the database file.
         """
-        self.data_file = data_file
-        self.known_face_encodings = []
-        self.known_face_ids = []
+        self.database_path = database_path
+        self.face_data = self._load_database()
+        self.mp_face = mp.solutions.face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 
-        # Load known faces and IDs from file if it exists
-        if os.path.exists(self.data_file):
-            self.load_known_faces()
+    def _load_database(self):
+        """Loads the face database from the pickle file or initializes an empty one."""
+        if os.path.exists(self.database_path):
+            with open(self.database_path, "rb") as f:
+                return pickle.load(f)
+        return {"face_images": [], "ids": []}
 
-    def save_register_records(self, user_id):
-        # get the currect date and time
-        now = datetime.now()
-        date = now.strftime('%Y-%m-%d')  # date format : YYYY-MM-DD
-        time = now.strftime('%H-%M-%S')  # time format : HH:MM:SS
-        # wite to csv file
-        with open('registered_users.csv', mode='a', newline='') as file:
-            write = csv.writer(file)
-            write.writerow([user_id, date, time])
+    def _save_database(self):
+        """Saves the current face data to the database file."""
+        with open(self.database_path, "wb") as f:
+            pickle.dump(self.face_data, f)
 
-    def load_known_faces(self):
-        """Load known faces and their IDs from the data file."""
-        with open(self.data_file, "rb") as file:
-            data = pickle.load(file)
-            self.known_face_encodings = data["encodings"]
-            self.known_face_ids = data["ids"]
-
-    def save_known_faces(self):
-        """Save known faces and their IDs to the data file."""
-        with open(self.data_file, "wb") as file:
-            data = {"encodings": self.known_face_encodings, "ids": self.known_face_ids}
-            pickle.dump(data, file)
+    def _extract_face(self, image):
+        """
+        Extracts a face region from the image using Mediapipe Face Detection.
+        :param image: Input image as a numpy array.
+        :return: Cropped face image or None if no face is detected.
+        """
+        results = self.mp_face.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        if results.detections:
+            for detection in results.detections:
+                bboxC = detection.location_data.relative_bounding_box
+                ih, iw, _ = image.shape
+                x, y, w, h = int(bboxC.xmin * iw), int(bboxC.ymin * ih), int(bboxC.width * iw), int(bboxC.height * ih)
+                face = image[y:y + h, x:x + w]
+                return cv2.resize(face, (100, 100))  # Resize for consistency
+        return None
 
     def add_new_face(self, image_path, user_id):
         """
-        Learn a new face and associate it with an ID.
+        Adds a new face with a specific user ID to the database.
         :param image_path: Path to the image containing the face.
-        :param face_id: A unique ID for the face.
+        :param user_id: Unique ID associated with the face.
         """
-        image = face_recognition.load_image_file(image_path)
-        face_encodings = face_recognition.face_encodings(image)
+        # type checking for user_id
+        if not isinstance(user_id, (str, int)):
+            raise TypeError('User ID must be a string or an integer.')
 
-        if len(face_encodings) > 0:
-            self.known_face_encodings.append(face_encodings[0])
-            self.known_face_ids.append(user_id)
-            self.save_known_faces()
-            self.save_register_records(user_id=user_id)
-            return {'message': 'user_registered'}
-        else:
-            return {'message': 'no_face_found_in_the_image'}
+        image = cv2.imread(image_path)
+        face = self._extract_face(image)
 
-    def recognize_faces(self, image_path):
+        if face is None:
+            raise ValueError("No face detected in the provided image.")
+
+        # Add the face and ID to the database
+        self.face_data["face_images"].append(face)
+        self.face_data["ids"].append(user_id)
+
+        # Save the updated database
+        self._save_database()
+        print('new_face_added_succesfully')
+
+    def recognize_face(self, image_path):
         """
-        Recognize faces in an image and return their IDs.
-        :param image_path: Path to the image containing faces.
-        :return: List of recognized face IDs.
+        Recognizes a face from the provided image and returns the associated ID.
+        :param image_path: Path to the image containing the face to recognize.
+        :return: The ID of the recognized face or 'Unknown' if no match is found.
         """
-        image = face_recognition.load_image_file(image_path)
-        face_locations = face_recognition.face_locations(image)
-        face_encodings = face_recognition.face_encodings(image, face_locations)
+        image = cv2.imread(image_path)
+        face = self._extract_face(image)
 
-        recognized_ids = []
+        if face is None:
+            raise ValueError("No face detected in the provided image.")
 
-        for face_encoding in face_encodings:
-            # Compare the face with known faces
-            matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
-            face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
+        # Compare the face with stored faces
+        for stored_face, user_id in zip(self.face_data["face_images"], self.face_data["ids"]):
+            # Compare using simple pixel-wise difference
+            diff = cv2.absdiff(stored_face, face)
+            score = diff.mean()
 
-            if matches:
-                # Find the best match
-                best_match_index = np.argmin(face_distances)
-                if matches[best_match_index]:
-                    recognized_ids.append(self.known_face_ids[best_match_index])
-                else:
-                    recognized_ids.append("Unknown")
-            else:
-                recognized_ids.append("Unknown")
+            if score < 50:
+                return user_id
 
-        return recognized_ids
+        return "Unknown"
 
-    def get_known_faces(self):
-        """Return the list of known face IDs."""
-        return self.known_face_ids
+
+# for test
+if __name__ == '__main__':
+    fr = FaceRecognitionManager()
+    fr.add_new_face(image_path='photos/image.jpg', user_id=0)

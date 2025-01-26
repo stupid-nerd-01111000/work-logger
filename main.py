@@ -6,6 +6,8 @@ from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtCore import QTimer
 from face_recognation_manager import FaceRecognitionManager
 import uuid
+import csv
+from datetime import datetime
 
 
 class App(QMainWindow):
@@ -53,6 +55,27 @@ class App(QMainWindow):
         self.enter_button.clicked.connect(self.enter_user)
         self.exit_button.clicked.connect(self.exit_user)
 
+        # file name
+        self.registration_users_file = 'registration_users.csv'
+
+        # run some methodes app need
+        self.create_registrations_users_file()
+        self.make_photos_dir()
+
+    def make_photos_dir(self):
+        if not os.path.exists('photos'):
+            os.makedirs('photos')
+
+    def create_registrations_users_file(self):
+        # check if the file exists, and create it with header if not.
+        if not os.path.exists(self.registration_users_file):
+            with open(self.registration_users_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['user_id', 'register_date', 'register_time'])  # write headers
+            print(f'{self.registration_users_file} created successfuly.')
+        else:
+            print(f'{self.registration_users_file} already exists.')
+
     def update_camera_feed(self):
         """Update the live camera feed in the QLabel."""
         ret, frame = self.capture.read()
@@ -64,31 +87,37 @@ class App(QMainWindow):
             q_image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
             self.camera_label.setPixmap(QPixmap.fromImage(q_image))
 
-    def capture_photo(self):
+    def capture_photo(self, work):
         """Capture a photo and save it to a file."""
         ret, frame = self.capture.read()
         if ret:
-            # Create folder if it doesn't exist
-            if not os.path.exists("captured_photos"):
-                os.makedirs("captured_photos")
 
-            # Generate a unique file name
-            photo_path = os.path.join("captured_photos", "photo.jpg")
-            counter = 1
+            # Generate a unique file name and id
+            new_id = self.generate_unique_id()
+            photo_path = os.path.join("photos", "photo.jpg")
             while os.path.exists(photo_path):
-                photo_path = os.path.join("captured_photos", f"photo_{counter}.jpg")
-                counter += 1
+                photo_path = os.path.join("photos", f"photo_{new_id}.jpg")
 
             # Save the image using OpenCV
             cv2.imwrite(photo_path, frame)
-            return photo_path
+            if work == 'register':
+                return photo_path, new_id
+            elif work == 'enter-or-exit':
+                return photo_path
 
     def register_user(self):
-        photo_path = self.capture_photo()
+        photo_path, new_id = self.capture_photo('register')
         if photo_path:
-            new_id = self.generate_unique_id()
             face_manager = FaceRecognitionManager()
             face_manager.add_new_face(image_path=photo_path, user_id=new_id)
+            # get-the-currect-date-and-time
+            now = datetime.now()
+            date = now.strftime('%Y-%m-%d')
+            time = now.strftime('%H:%M:%S')
+            # append-the-new-user-imformation-to-the-file
+            with open(self.registration_users_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([new_id, date, time])
             QMessageBox.information(self, "Registration", f"User registered with ID: {new_id}")
         else:
             QMessageBox.warning(self, "Registration", "Failed to capture photo.")
