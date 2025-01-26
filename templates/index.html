@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Analyzer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f9f9f9;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        .results h2 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+        .results ul {
+            list-style: none;
+            padding: 0;
+        }
+        .results ul li {
+            margin-bottom: 5px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Attendance Analyzer</h1>
+        <form id="analyzeForm">
+            <label for="date">Date:</label>
+            <input type="date" id="date" name="date" required>
+
+            <label for="start_time">Start Time:</label>
+            <input type="time" id="start_time" name="start_time" required>
+
+            <label for="end_time">End Time:</label>
+            <input type="time" id="end_time" name="end_time" required>
+
+            <button type="submit">Analyze</button>
+        </form>
+
+        <div class="results" id="results" style="display: none;">
+            <h2>Results</h2>
+            <ul id="output"></ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('analyzeForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const date = document.getElementById('date').value;
+            const start_time = document.getElementById('start_time').value;
+            const end_time = document.getElementById('end_time').value;
+
+            const response = await fetch('/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ date, start_time, end_time })
+            });
+
+            const result = await response.json();
+
+            document.getElementById('results').style.display = 'block';
+            const output = document.getElementById('output');
+            output.innerHTML = `
+                <li><strong>Absent Employees:</strong> ${result.absent_employees.join(', ')}</li>
+                <li><strong>Late Arrivals:</strong> ${JSON.stringify(result.late_arrivals, null, 2)}</li>
+                <li><strong>Early Departures:</strong> ${JSON.stringify(result.early_departures, null, 2)}</li>
+            `;
+        });
+    </script>
+</body>
+</html>

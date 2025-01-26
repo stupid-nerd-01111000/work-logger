@@ -87,10 +87,11 @@ class FaceRecognitionManager:
             if score < 50:
                 return user_id
 
-        return "Unknown"
+        return "unknown"
 
 
 # for test
 if __name__ == '__main__':
     fr = FaceRecognitionManager()
-    fr.add_new_face(image_path='photos/image.jpg', user_id=0)
+    for i in range(1, 5):
+        fr.add_new_face(image_path=f'photos/image{i}.jpg', user_id=i)

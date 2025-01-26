@@ -8,6 +8,8 @@ from face_recognation_manager import FaceRecognitionManager
 import uuid
 import csv
 from datetime import datetime
+from attendance_analyzer import app
+from threading import Thread
 
 
 class App(QMainWindow):
@@ -57,9 +59,11 @@ class App(QMainWindow):
 
         # file name
         self.registration_users_file = 'registration_users.csv'
+        self.users_log_file = 'logs.csv'
 
         # run some methodes app need
         self.create_registrations_users_file()
+        self.create_users_log_file()
         self.make_photos_dir()
 
     def make_photos_dir(self):
@@ -76,6 +80,16 @@ class App(QMainWindow):
         else:
             print(f'{self.registration_users_file} already exists.')
 
+    def create_users_log_file(self):
+        # check if the file exists, and create it with header if not.
+        if not os.path.exists(self.users_log_file):
+            with open(self.users_log_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['user_id', 'date', 'time', 'enter_or_exit'])  # write headers
+            print(f'{self.users_log_file} created successfuly.')
+        else:
+            print(f'{self.users_log_file} already exists.')
+
     def update_camera_feed(self):
         """Update the live camera feed in the QLabel."""
         ret, frame = self.capture.read()
@@ -91,12 +105,9 @@ class App(QMainWindow):
         """Capture a photo and save it to a file."""
         ret, frame = self.capture.read()
         if ret:
-
             # Generate a unique file name and id
             new_id = self.generate_unique_id()
-            photo_path = os.path.join("photos", "photo.jpg")
-            while os.path.exists(photo_path):
-                photo_path = os.path.join("photos", f"photo_{new_id}.jpg")
+            photo_path = os.path.join("photos", f'photo_{new_id}.jpg')
 
             # Save the image using OpenCV
             cv2.imwrite(photo_path, frame)
@@ -107,26 +118,60 @@ class App(QMainWindow):
 
     def register_user(self):
         photo_path, new_id = self.capture_photo('register')
-        if photo_path:
-            face_manager = FaceRecognitionManager()
-            face_manager.add_new_face(image_path=photo_path, user_id=new_id)
-            # get-the-currect-date-and-time
-            now = datetime.now()
-            date = now.strftime('%Y-%m-%d')
-            time = now.strftime('%H:%M:%S')
-            # append-the-new-user-imformation-to-the-file
-            with open(self.registration_users_file, mode='a', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow([new_id, date, time])
-            QMessageBox.information(self, "Registration", f"User registered with ID: {new_id}")
+        face_manager = FaceRecognitionManager()
+        user = face_manager.recognize_face(photo_path)
+        if user == 'unknown':
+            if photo_path:
+                # Teaching the machine a new user
+                face_manager.add_new_face(image_path=photo_path, user_id=new_id)
+
+                # get-the-currect-date-and-time
+                date, time = self.get_date_time()
+
+                # append-the-new-user-information-to-the-file
+                with open(self.registration_users_file, mode='a', newline='') as file:
+                    writer = csv.writer(file)
+                    writer.writerow([new_id, date, time])
+                QMessageBox.information(self, "Registration", f"User registered with ID: {new_id}")
+            else:
+                QMessageBox.warning(self, "Registration", "Failed to capture photo.")
         else:
-            QMessageBox.warning(self, "Registration", "Failed to capture photo.")
+            QMessageBox.warning(self, 'Registration', 'You have already registered')
 
     def enter_user(self):
-        pass
+        photo_path = self.capture_photo('enter-or-exit')
+        face_manager = FaceRecognitionManager()
+        user_id = face_manager.recognize_face(photo_path)
+        date, time = self.get_date_time()
+        if user_id == 'unknown':
+            QMessageBox.warning(self, 'unknown', 'you must register first')
+        else:
+            # append-information-to-file
+            with open(self.users_log_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([user_id, date, time, 'enter'])
+            QMessageBox.information(self, 'Welcome', f'your entry has been recorded with id : {user_id}')
 
     def exit_user(self):
-        pass
+        photo_path = self.capture_photo('enter-or-exit')
+        face_manager = FaceRecognitionManager()
+        user_id = face_manager.recognize_face(photo_path)
+        date, time = self.get_date_time()
+        if user_id == 'unknown':
+            QMessageBox.warning(self, 'unknown', 'you must register first')
+        else:
+            # append-information-to-file
+            with open(self.users_log_file, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([user_id, date, time, 'exit'])
+            QMessageBox.information(self, 'I will miss you', f'your exit has been recorded with id : {user_id}')
+
+    def get_date_time(self):
+        # get-the-currect-date-and-time
+        now = datetime.now()
+        date = now.strftime('%Y-%m-%d')
+        time = now.strftime('%H:%M:%S')
+        return date, time
 
     def closeEvent(self, event):
         """Release the camera on close."""
@@ -137,8 +182,18 @@ class App(QMainWindow):
         return str(uuid.uuid4())
 
 
+def run_flask():
+    # if you want debug run app in main 
+    app.run(debug=False)
+
+
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
+    # run flask in a separate thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    # run pyqt in the main thread
+    qtapp = QApplication(sys.argv)
     window = App()
     window.show()
-    sys.exit(app.exec())
+    sys.exit(qtapp.exec())
