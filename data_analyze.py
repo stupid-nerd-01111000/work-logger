@@ -3,12 +3,19 @@ from datetime import datetime
 
 class AttendanceAnalyzer:
     def __init__(self, logs_file, registration_file):
-        self.logs_df = pd.read_csv(logs_file)
-        self.registration_df = pd.read_csv(registration_file)
+        self.logs_file = logs_file
+        self.registration_file = registration_file
         self.work_start = datetime.strptime("08:30:00", "%H:%M:%S").time()
         self.work_end = datetime.strptime("17:30:00", "%H:%M:%S").time()
 
+    def reload_data(self):
+        self.logs_df = pd.read_csv(self.logs_file)
+        self.registration_df = pd.read_csv(self.registration_file)
+
     def analyze_date(self, target_date):
+        # Reload data to include the latest updates
+        self.reload_data()
+
         daily_logs = self.logs_df[self.logs_df["date"] == target_date]
         present_users = set(daily_logs["user_id"])
         all_users = set(self.registration_df["user_id"])
