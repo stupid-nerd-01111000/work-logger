@@ -8,7 +8,7 @@ from face_recognation_manager import FaceRecognitionManager
 import uuid
 import csv
 from datetime import datetime
-from attendance_analyzer import app
+from web_app import app
 from threading import Thread
 
 
